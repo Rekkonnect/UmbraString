@@ -7,7 +7,26 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     
     <RootNamespace>Rekkon.UmbraString</RootNamespace>
-    
   </PropertyGroup>
+
+  <!-- Package properties -->
+
+  <PropertyGroup>
+    <Product>Rekkon.UmbraString</Product>
+    <PackageId>Rekkon.UmbraString</PackageId>
+    <Description>An unsafe C# implementation of the Umbra string.</Description>
+    <PackageTags>umbra, string, umbra-string, unsafe</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Version>0.1.0</Version>
+    <Authors>Rekkon</Authors>
+    <Copyright>© 2024 Rekkon</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>True</PackageRequireLicenseAcceptance>
+    <RepositoryUrl>https://github.com/Rekkonnect/UmbraString</RepositoryUrl>
+  </PropertyGroup>
+
+  <ItemGroup Label="README reference">
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
 </Project>
