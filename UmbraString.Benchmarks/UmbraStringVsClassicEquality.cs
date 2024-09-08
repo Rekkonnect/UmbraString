@@ -16,20 +16,21 @@ So far good:
 
 #endif
 
+[IterationTime(250)]
 public class UmbraStringVsClassicEquality
 {
-    public static ReadOnlySpan<byte> PrefixStringA => "1"u8;
-    public static ReadOnlySpan<byte> ShortStringA => "123456"u8;
-    public static ReadOnlySpan<byte> MaxShortStringA => "123456789012"u8;
-    public static ReadOnlySpan<byte> LongStringA => "123456789012345"u8;
+    public static SpanString PrefixStringA => "1"u8;
+    public static SpanString ShortStringA => "123456"u8;
+    public static SpanString MaxShortStringA => "123456789012"u8;
+    public static SpanString LongStringA => "123456789012345"u8;
 
-    public static ReadOnlySpan<byte> PrefixStringB => "2"u8;
-    public static ReadOnlySpan<byte> ShortStringB => "223456"u8;
-    public static ReadOnlySpan<byte> ShortStringC => "123455"u8;
-    public static ReadOnlySpan<byte> MaxShortStringB => "223456789012"u8;
-    public static ReadOnlySpan<byte> MaxShortStringC => "123456779012"u8;
-    public static ReadOnlySpan<byte> LongStringB => "223456789012345"u8;
-    public static ReadOnlySpan<byte> LongStringC => "123456789012355"u8;
+    public static SpanString PrefixStringB => "2"u8;
+    public static SpanString ShortStringB => "223456"u8;
+    public static SpanString ShortStringC => "123455"u8;
+    public static SpanString MaxShortStringB => "223456789012"u8;
+    public static SpanString MaxShortStringC => "123456779012"u8;
+    public static SpanString LongStringB => "223456789012345"u8;
+    public static SpanString LongStringC => "123456789012355"u8;
 
     public UmbraString UmbraPrefixStringA = UmbraString.Construct(PrefixStringA);
     public UmbraString UmbraShortStringA = UmbraString.Construct(ShortStringA);
@@ -73,7 +74,7 @@ public class UmbraStringVsClassicEquality
 #pragma warning restore CA1822 // Mark members as static
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool Equals(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+    private static bool Equals(SpanString left, SpanString right)
     {
         return left.SequenceEqual(right);
     }

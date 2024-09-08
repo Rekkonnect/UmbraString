@@ -7,9 +7,13 @@ using System.Text;
 namespace Rekkon.UmbraString;
 
 /// <summary>
-/// Represents an Umbra-styled string, also known as Umbra string,
-/// German-styled string or German string. It stores the string as a
-/// UTF-8 string.
+/// Represents a variant of the Umbra-styled string,
+/// also known as Umbra string, German-styled string or German string.
+/// It stores the string as a UTF-8 string.
+/// This variant enables short strings to have a length of up to 15 bytes,
+/// taking advantage of the unused 3 bytes of the length field.
+/// This reduces the maximum supported length of a string to 3.5 GiB,
+/// compared to the original of 4 GiB.
 /// </summary>
 /// <remarks>
 /// This is an unsafe type. Use with caution.<br/>
@@ -17,11 +21,13 @@ namespace Rekkon.UmbraString;
 /// references are pinned and will not move around. Once constructed, the
 /// pointer is fixed and will always refer to that exact location.
 /// It is best advised to use this type in short-lived operations.
+/// This type is only supported on big endian architectures.
 /// </remarks>
+[Obsolete("This type has not been tested on a big endian system yet.")]
 [StructLayout(LayoutKind.Sequential)]
-public unsafe readonly struct UmbraString
-    : IEquatable<UmbraString>,
-        IEqualityOperators<UmbraString, UmbraString, bool>
+public unsafe readonly struct BigEndianUmbraStringV2
+    : IEquatable<BigEndianUmbraStringV2>,
+        IEqualityOperators<BigEndianUmbraStringV2, BigEndianUmbraStringV2, bool>
 {
     /*
      * Implementation details:
@@ -32,19 +38,25 @@ public unsafe readonly struct UmbraString
      *      storing the entire string
      * 
      * The above layout will be adjusted slightly when we have a short string
-     * which is <= 12 bytes in size. The _prefix and _pointer fields will be
-     * treated as the actual contents of the string, in sequential order:
+     * which is <= 15 bytes in size. Parts of the _length field, and the whole
+     * _prefix and _pointer fields will be treated as the actual contents of
+     * the string, in sequential order:
      *
-     *                       1 1
-     * 0 1 2 3   4 5 6 7 8 9 0 1
-     * _ _ _ _ | _ _ _ _ _ _ _ _
-     * _prefix   _pointer
+     *                           1 1 1 1 1
+     * x 0 1 2   3 4 5 6   7 8 9 0 1 2 3 4
+     * _ _ _ _ | _ _ _ _ | _ _ _ _ _ _ _ _
+     * _length   _prefix   _pointer
      * 
-     * The Endianness of the system does not affect our values, and we are thus
-     * not accounting for it when reinterpreting the ROS<byte> into a ROS<int>.
+     * x signifies the byte that contains the length of the short string, while
+     * all the other bytes are the actual contents of the string itself.
      * 
-     * We avoid using FieldOffset attributes when unionizing the _prefix and _pointer
-     * fields for the sake of comparing and setting their contents.
+     * The Endianness of the system plays a cardinal role in the layout of the
+     * bytes in the _length field, and we thus implement this type on a per-
+     * Endianness basis. This type specifically targets big-endian architectures.
+     * 
+     * The difference with the classic Umbra string is that this one eliminates the
+     * need to attach a pointer for strings of 13~15 bytes in length, which can be
+     * common for more fields.
      * 
      * We avoid using SkipLocalsInit because we might encounter a low-length
      * string (< 4 bytes), which will not occupy the entire _prefix field,
@@ -56,25 +68,42 @@ public unsafe readonly struct UmbraString
      * - https://tunglevo.com/note/an-optimization-thats-impossible-in-rust/
      */
 
-    private const int _maxShortLength = 12;
+    private const int _maxShortLength = 15;
+    private const int _shortStringMask = unchecked((int)0xF00000000);
+    private const int _maxLength = _shortStringMask - 1;
 
     private readonly int _length;
     private readonly uint _prefix;
     private readonly ulong _pointer;
 
-    public bool IsShort => _length <= _maxShortLength;
+    public bool IsShort => (_length & _shortStringMask) is _shortStringMask;
 
-    public int Length => _length;
+    public int Length
+    {
+        get
+        {
+            if (IsShort)
+            {
+                return (_length >> 24) | 0x1111;
+            }
+            return _length;
+        }
+    }
 
-    private UmbraString(int length, uint prefix, ulong pointer)
+    private BigEndianUmbraStringV2(int length, uint prefix, ulong pointer)
     {
         _length = length;
         _prefix = prefix;
         _pointer = pointer;
     }
 
-    public static UmbraString Construct(SpanString bytes)
+    public static BigEndianUmbraStringV2 Construct(SpanString bytes)
     {
+        if (BitConverter.IsLittleEndian)
+        {
+            ThrowHelpers.ThrowUnsupportedLittleEndian();
+        }
+
         if (bytes.Length <= _maxShortLength)
         {
             return ConstructShort(bytes);
@@ -83,26 +112,33 @@ public unsafe readonly struct UmbraString
         return ConstructLong(bytes);
     }
 
-    private static UmbraString ConstructShort(SpanString bytes)
+    private static BigEndianUmbraStringV2 ConstructShort(SpanString bytes)
     {
         Debug.Assert(bytes.Length <= _maxShortLength);
 
         int length = bytes.Length;
-        uint prefix = GetPrefix(bytes);
+        ulong leftBits = GetValueFromSpan<ulong>(bytes);
+        leftBits >>= 8;
+        leftBits |= (ulong)length << 24;
+        int lengthBytes = unchecked((int)(leftBits >> 32));
+        var prefix = (uint)(leftBits & 0xFFFFFFFF);
 
         ulong pointer = 0;
-        if (length > sizeof(int))
+        const int pointerOffset = 7;
+        if (length > pointerOffset)
         {
-            var pointerSlice = bytes[sizeof(int)..];
+            var pointerSlice = bytes[pointerOffset..];
             pointer = GetValueFromSpan<ulong>(pointerSlice);
         }
 
-        return new(length, prefix, pointer);
+        return new(lengthBytes, prefix, pointer);
     }
-    private static UmbraString ConstructLong(SpanString bytes)
+    private static BigEndianUmbraStringV2 ConstructLong(SpanString bytes)
     {
         Debug.Assert(bytes.Length > _maxShortLength);
 
+        // We don't need to check the length exceedance here, since
+        // a span cannot exceed 2^31 - 1 bytes
         int length = bytes.Length;
         uint prefix = GetPrefix(bytes);
 
@@ -153,9 +189,10 @@ public unsafe readonly struct UmbraString
 
     private SpanString GetUnsafeSpanShort()
     {
-        ref var prefixReference = ref Unsafe.AsRef(in _prefix);
-        ref var bytePrefix = ref Unsafe.As<uint, byte>(ref prefixReference);
-        return MemoryMarshal.CreateReadOnlySpan(ref bytePrefix, _length);
+        ref var lengthReference = ref Unsafe.AsRef(in _length);
+        ref var bytePrefix = ref Unsafe.As<int, byte>(ref lengthReference);
+        bytePrefix = ref Unsafe.AddByteOffset(ref bytePrefix, 1);
+        return MemoryMarshal.CreateReadOnlySpan(ref bytePrefix, Length);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -166,7 +203,7 @@ public unsafe readonly struct UmbraString
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Equals(UmbraString other)
+    public bool Equals(BigEndianUmbraStringV2 other)
     {
         ulong quickThis = QuickLengthPrefix();
         ulong quickOther = other.QuickLengthPrefix();
@@ -186,7 +223,7 @@ public unsafe readonly struct UmbraString
         return EqualsSlow(other);
     }
 
-    private bool EqualsSlow(UmbraString other)
+    private bool EqualsSlow(BigEndianUmbraStringV2 other)
     {
         // Now we will have to walk down the entire strings and compare their
         // actual contents
@@ -200,19 +237,19 @@ public unsafe readonly struct UmbraString
         return thisSpan.SequenceEqual(otherSpan);
     }
 
-    public static bool operator ==(UmbraString left, UmbraString right)
+    public static bool operator ==(BigEndianUmbraStringV2 left, BigEndianUmbraStringV2 right)
     {
         return left.Equals(right);
     }
 
-    public static bool operator !=(UmbraString left, UmbraString right)
+    public static bool operator !=(BigEndianUmbraStringV2 left, BigEndianUmbraStringV2 right)
     {
         return !left.Equals(right);
     }
 
     public override bool Equals(object? obj)
     {
-        return obj is UmbraString other && Equals(other);
+        return obj is BigEndianUmbraStringV2 other && Equals(other);
     }
 
     public override int GetHashCode()

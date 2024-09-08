@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\UmbraString.Tests.Assets\UmbraString.Tests.Assets.csproj" />
     <ProjectReference Include="..\UmbraString\UmbraString.csproj" />
   </ItemGroup>
 
