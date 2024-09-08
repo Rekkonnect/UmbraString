@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -8,8 +7,9 @@ namespace Rekkon.UmbraString;
 
 /// <summary>
 /// Represents an Umbra-styled string, also known as Umbra string,
-/// German-styled string or German string. It stores the string as a
-/// UTF-8 string.
+/// German-styled string or German string.
+/// It stores the string as an array of bytes, without accounting for the
+/// encoding.
 /// </summary>
 /// <remarks>
 /// This is an unsafe type. Use with caution.<br/>
@@ -20,8 +20,7 @@ namespace Rekkon.UmbraString;
 /// </remarks>
 [StructLayout(LayoutKind.Sequential)]
 public unsafe readonly struct UmbraString
-    : IEquatable<UmbraString>,
-        IEqualityOperators<UmbraString, UmbraString, bool>
+    : IUmbraString<UmbraString>
 {
     /*
      * Implementation details:
@@ -57,6 +56,9 @@ public unsafe readonly struct UmbraString
      */
 
     private const int _maxShortLength = 12;
+
+    public static int MaxShortLength => _maxShortLength;
+    public static uint MaxLength => uint.MaxValue;
 
     private readonly int _length;
     private readonly uint _prefix;

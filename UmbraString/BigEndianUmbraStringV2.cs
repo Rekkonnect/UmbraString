@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -9,7 +8,8 @@ namespace Rekkon.UmbraString;
 /// <summary>
 /// Represents a variant of the Umbra-styled string,
 /// also known as Umbra string, German-styled string or German string.
-/// It stores the string as a UTF-8 string.
+/// It stores the string as an array of bytes, without accounting for the
+/// encoding.
 /// This variant enables short strings to have a length of up to 15 bytes,
 /// taking advantage of the unused 3 bytes of the length field.
 /// This reduces the maximum supported length of a string to 3.5 GiB,
@@ -26,8 +26,7 @@ namespace Rekkon.UmbraString;
 [Obsolete("This type has not been tested on a big endian system yet.")]
 [StructLayout(LayoutKind.Sequential)]
 public unsafe readonly struct BigEndianUmbraStringV2
-    : IEquatable<BigEndianUmbraStringV2>,
-        IEqualityOperators<BigEndianUmbraStringV2, BigEndianUmbraStringV2, bool>
+    : IUmbraString<BigEndianUmbraStringV2>
 {
     /*
      * Implementation details:
@@ -69,8 +68,11 @@ public unsafe readonly struct BigEndianUmbraStringV2
      */
 
     private const int _maxShortLength = 15;
-    private const int _shortStringMask = unchecked((int)0xF00000000);
-    private const int _maxLength = _shortStringMask - 1;
+    private const int _shortStringMask = unchecked((int)0xF000_0000);
+    private const uint _maxLength = 0xF000_0000u - 1;
+
+    public static int MaxShortLength => _maxShortLength;
+    public static uint MaxLength => _maxLength;
 
     private readonly int _length;
     private readonly uint _prefix;
