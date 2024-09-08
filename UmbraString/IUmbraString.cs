@@ -18,8 +18,23 @@ public interface IUmbraString<TSelf>
     public bool IsShort { get; }
     public int Length { get; }
 
+    public TSelf Concat(TSelf other, Span<byte> newBuffer);
+    public TSelf Slice(int start, int length);
+
+    public unsafe byte* GetContentPointerUnsafe();
+
     public SpanString GetUnsafeSpan();
     public string ToString(Encoding encoding);
 
     public static abstract TSelf Construct(SpanString bytes);
+
+    public static bool FitsShort(SpanString span)
+    {
+        return UmbraStringHelpers.FitsShort<TSelf>(span);
+    }
+
+    public static TSelf ConstructLong(SpanString span, Span<byte> outBuffer)
+    {
+        return UmbraStringHelpers.ConstructLong<TSelf>(span, outBuffer);
+    }
 }

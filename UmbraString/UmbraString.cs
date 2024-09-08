@@ -202,6 +202,122 @@ public unsafe readonly struct UmbraString
         return thisSpan.SequenceEqual(otherSpan);
     }
 
+    public UmbraString Concat(UmbraString other, Span<byte> newBuffer)
+    {
+        int thisLength = Length;
+        int otherLength = other.Length;
+
+        int resultLength = thisLength + otherLength;
+
+        if (resultLength > _maxShortLength)
+        {
+            return UmbraStringHelpers.ConcatLong(this, other, newBuffer);
+        }
+
+        // If we can fit the new content in a short string, we also have short strings
+        Debug.Assert(IsShort);
+        Debug.Assert(other.IsShort);
+
+        Span<byte> resultSpan = stackalloc byte[sizeof(UmbraString)];
+
+        // Set the length
+        var intBlock = MemoryMarshal.Cast<byte, int>(resultSpan);
+        intBlock[0] = resultLength;
+
+        // Copy the contents directly
+        var contentSpan = resultSpan[sizeof(int)..];
+        var thisSpan = GetUnsafeSpanShort();
+        var otherSpan = other.GetUnsafeSpanShort();
+        thisSpan.CopyTo(contentSpan);
+        otherSpan.CopyTo(contentSpan[thisLength..]);
+        ref var result = ref MemoryMarshal.AsRef<UmbraString>(resultSpan);
+        return result;
+    }
+
+    public UmbraString Slice(int start, int length)
+    {
+        if (length == 0)
+            return default;
+
+        int sourceLength = Length;
+        if (start < 0 || start >= sourceLength)
+        {
+            ThrowHelpers.ThrowArgumentOutOfRangeException(nameof(start),
+                "The start index falls out of range of the string.");
+        }
+
+        if (length < 0)
+        {
+            ThrowHelpers.ThrowArgumentOutOfRangeException(nameof(length),
+                "The length cannot be negative.");
+        }
+
+        if (start + length > sourceLength)
+        {
+            ThrowHelpers.ThrowArgumentOutOfRangeException(nameof(length),
+                "The specified range falls out of the range of the string.");
+        }
+
+        if (length == sourceLength)
+            return this;
+
+        if (IsShort)
+        {
+            return SliceShort(start, length);
+        }
+
+        return SliceLong(start, length);
+    }
+
+    private UmbraString SliceShort(int start, int length)
+    {
+        Span<byte> resultSpan = stackalloc byte[sizeof(UmbraString)];
+
+        // Set the length
+        var intBlock = MemoryMarshal.Cast<byte, int>(resultSpan);
+        intBlock[0] = length;
+
+        // Copy the contents directly
+        var contentSpan = resultSpan[sizeof(int)..];
+        var thisSpan = GetUnsafeSpanShort().Slice(start, length);
+        thisSpan.CopyTo(contentSpan);
+        ref var result = ref MemoryMarshal.AsRef<UmbraString>(resultSpan);
+        return result;
+    }
+
+    private UmbraString SliceLong(int start, int length)
+    {
+        // Always try to reduce from long to short
+        if (length <= _maxShortLength)
+        {
+            var span = GetUnsafeSpanLong().Slice(start, length);
+            return ConstructShort(span);
+        }
+
+        uint prefix = default;
+        ulong pointer = _pointer + (ulong)start;
+        if (start is 0)
+        {
+            prefix = _prefix;
+        }
+        else
+        {
+            var span = GetUnsafeSpanLong();
+            var prefixSpan = span.Slice(start, sizeof(uint));
+            prefix = MemoryMarshal.AsRef<uint>(prefixSpan);
+        }
+
+        return new(length, prefix, pointer);
+    }
+
+    public byte* GetContentPointerUnsafe()
+    {
+        if (IsShort)
+            return null;
+
+        return (byte*)_pointer;
+    }
+
     public static bool operator ==(UmbraString left, UmbraString right)
     {
         return left.Equals(right);

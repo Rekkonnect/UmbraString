@@ -19,4 +19,9 @@ internal static class ThrowHelpers
         throw new ArgumentOutOfRangeException(
             "The maximum length of the Umbra string v2 cannot exceed 3.5 GiB.");
     }
+
+    public static void ThrowArgumentOutOfRangeException(string paramName, string message)
+    {
+        throw new ArgumentOutOfRangeException(paramName, message);
+    }
 }

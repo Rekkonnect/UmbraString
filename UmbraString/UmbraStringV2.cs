@@ -23,7 +23,7 @@ namespace Rekkon.UmbraString;
 /// pointer is fixed and will always refer to that exact location.
 /// It is best advised to use this type in short-lived operations.
 /// This type is only supported on little endian architectures.
-/// Use <see cref="BigEndianUmbraStringV2"/> for big endian architectures.
+/// Use <see cref="UmbraStringV2"/> for big endian architectures.
 /// </remarks>
 [StructLayout(LayoutKind.Sequential)]
 public unsafe readonly struct UmbraStringV2
@@ -248,6 +248,121 @@ public unsafe readonly struct UmbraStringV2
         Debug.Assert(thisSpan.Length == otherSpan.Length);
 
         return thisSpan.SequenceEqual(otherSpan);
+    }
+
+    public UmbraStringV2 Concat(UmbraStringV2 other, Span<byte> newBuffer)
+    {
+        int thisLength = Length;
+        int otherLength = other.Length;
+
+        int resultLength = thisLength + otherLength;
+
+        if (resultLength > _maxShortLength)
+        {
+            return UmbraStringHelpers.ConcatLong(this, other, newBuffer);
+        }
+
+        // If we can fit the new content in a short string, we also have short strings
+        Debug.Assert(IsShort);
+        Debug.Assert(other.IsShort);
+
+        Span<byte> resultSpan = stackalloc byte[sizeof(UmbraStringV2)];
+
+        // Set the length
+        resultSpan[0] = (byte)(resultLength | 0xF0);
+
+        // Copy the contents directly
+        var contentSpan = resultSpan[1..];
+        var thisSpan = GetUnsafeSpanShort();
+        var otherSpan = other.GetUnsafeSpanShort();
+        thisSpan.CopyTo(contentSpan);
+        otherSpan.CopyTo(contentSpan[thisLength..]);
+        ref var result = ref MemoryMarshal.AsRef<UmbraStringV2>(resultSpan);
+        return result;
+    }
+
+    public UmbraStringV2 Slice(int start, int length)
+    {
+        if (length == 0)
+            return default;
+
+        int sourceLength = Length;
+        if (start < 0 || start >= sourceLength)
+        {
+            ThrowHelpers.ThrowArgumentOutOfRangeException(nameof(start),
+                "The start index falls out of range of the string.");
+        }
+
+        if (length < 0)
+        {
+            ThrowHelpers.ThrowArgumentOutOfRangeException(nameof(length),
+                "The length cannot be negative.");
+        }
+
+        if (start + length > sourceLength)
+        {
+            ThrowHelpers.ThrowArgumentOutOfRangeException(nameof(length),
+                "The specified range falls out of the range of the string.");
+        }
+
+        if (length == sourceLength)
+            return this;
+
+        if (IsShort)
+        {
+            return SliceShort(start, length);
+        }
+
+        return SliceLong(start, length);
+    }
+
+    private UmbraStringV2 SliceShort(int start, int length)
+    {
+        Span<byte> resultSpan = stackalloc byte[sizeof(UmbraStringV2)];
+
+        // Set the length
+        resultSpan[0] = (byte)(length | 0xF0);
+
+        // Copy the contents directly
+        var contentSpan = resultSpan[1..];
+        var thisSpan = GetUnsafeSpanShort().Slice(start, length);
+        thisSpan.CopyTo(contentSpan);
+        ref var result = ref MemoryMarshal.AsRef<UmbraStringV2>(resultSpan);
+        return result;
+    }
+
+    private UmbraStringV2 SliceLong(int start, int length)
+    {
+        // Always try to reduce from long to short
+        if (length <= _maxShortLength)
+        {
+            var span = GetUnsafeSpanLong().Slice(start, length);
+            return ConstructShort(span);
+        }
+
+        uint prefix = default;
+        ulong pointer = _pointer + (ulong)start;
+        if (start is 0)
+        {
+            prefix = _prefix;
+        }
+        else
+        {
+            var span = GetUnsafeSpanLong();
+            var prefixSpan = span.Slice(start, sizeof(uint));
+            prefix = MemoryMarshal.AsRef<uint>(prefixSpan);
+        }
+
+        var lengthBytes = BinaryPrimitives.ReverseEndianness(length);
+        return new(lengthBytes, prefix, pointer);
+    }
+
+    public byte* GetContentPointerUnsafe()
+    {
+        if (IsShort)
+            return null;
+
+        return (byte*)_pointer;
     }
 
     public static bool operator ==(UmbraStringV2 left, UmbraStringV2 right)
